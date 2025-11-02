@@ -76,7 +76,7 @@ Browser (Chrome/Edge recommended)
 
 Clone the repository
 
-git clone https://github.com/your-username/calender-clone.git
+git clone https://github.com/rachbieb/calender-clone.git
 cd calender-clone
 
 
@@ -131,4 +131,5 @@ Animations mimic Google Calendar’s UX with fade-in/out and modal transitions.
 
 Panyam Karthikeya
 📧 e22cseu1771@bennett.edu.in
+
 💻 Developed using Java (Spring Boot) and Vanilla JS
