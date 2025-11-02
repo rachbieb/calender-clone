@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Calendar Clone - High Fidelity</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+    <style>
+        :root {
+            --cal-sidebar: 256px;
+            --topbar-height: 56px;
+            --blue: #1a73e8;
+            --light-blue: rgba(26,115,232,0.08);
+            --border: rgba(60,64,67,0.16);
+        }
+        html, body {
+            height: 100%;
+            background: #fff;
+        }
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #202124;
+            overflow: hidden;
+        }
+        .scroll-thin::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .scroll-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .scroll-thin::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.15);
+            border-radius: 999px;
+        }
+        .btn-icon {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .btn-icon:hover {
+            background: rgba(60,64,67,.08);
+        }
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: 50px repeat(7, minmax(0, 1fr));
+            border-top: 1px solid var(--border);
+            border-left: 1px solid var(--border);
+            height: calc(100vh - var(--topbar-height) - 64px);
+        }
+        .calendar-cell {
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            min-height: 120px;
+            cursor: pointer;
+        }
+        .day-label {
+            position: sticky;
+            top: 0;
+            background: #fff;
+            z-index: 10;
+            border-bottom: 1px solid var(--border);
+        }
+        .event-pill {
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 16px;
+            padding: 2px 4px;
+            background: rgba(26, 115, 232, .15);
+            border-left: 4px solid #1a73e8;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .today-cell {
+            background: rgba(26,115,232,0.045);
+        }
+        .today-outline {
+            border: 1.5px solid #1a73e8;
+            border-radius: 999px;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #1a73e8;
+            margin: 4px 0 0 16px;
+        }
+        @media (max-width: 1024px) {
+            :root {
+                --cal-sidebar: 64px;
+            }
+            .hide-md {
+                display: none !important;
+            }
+            .calendar-grid {
+                grid-template-columns: 36px repeat(7, minmax(90px, 1fr));
+            }
+        }
+        @media (max-width: 768px) {
+            .calendar-grid {
+                grid-template-columns: 36px repeat(1, minmax(0, 1fr));
+            }
+            .hide-sm {
+                display: none !important;
+            }
+        }
+        .modal-backdrop {
+            background: rgba(0,0,0,0.35);
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+        }
+        .modal {
+            background: #fff;
+            border-radius: 8px;
+            width: min(460px, calc(100vw - 28px));
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 24px 48px rgba(0,0,0,.15);
+        }
+        .event-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+        }
+        .view-active {
+            background: rgba(26,115,232,.1);
+            color: #1a73e8;
+            font-weight: 500;
+        }
+        .time-col {
+            border-right: 1px solid var(--border);
+            background: #fff;
+            z-index: 12;
+        }
+        .hour-row {
+            border-bottom: 1px solid rgba(60,64,67,0.08);
+            height: 48px;
+            position: relative;
+        }
+        .hour-label {
+            font-size: 10px;
+            color: #70757a;
+            position: absolute;
+            top: -6px;
+            right: 2px;
+        }
+        .week-grid, .day-grid {
+            border-top: 1px solid var(--border);
+            height: calc(100vh - var(--topbar-height) - 64px);
+            display: grid;
+            grid-template-columns: 50px repeat(7, minmax(0,1fr));
+            overflow-y: auto;
+            position: relative;
+        }
+        .day-grid.active {
+            grid-template-columns: 50px 1fr;
+        }
+        .time-highlight {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #1a73e8;
+            z-index: 50;
+        }
+        .floating-new {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            width: 56px;
+            height: 56px;
+            border-radius: 999px;
+            background: #1a73e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(26,115,232,0.45);
+        }
+    </style>
+</head>
+<body class="bg-white">
+<!-- Top Bar -->
+<header class="flex items-center gap-4 px-4 md:px-6 h-[56px] border-b border-slate-200/80 w-full">
+    <div class="flex items-center gap-1.5">
+        <div id="menuToggle" class="btn-icon">
+            <svg viewBox="0 0 24 24" class="w-5 h-5 text-slate-700"><path fill="currentColor" d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+        </div>
+        <div class="flex items-center gap-1.5 cursor-pointer select-none">
+            <img src="https://www.gstatic.com/calendar/images/dynamiclogo_2020q4/calendar_24_2x.png" alt="logo" class="w-8 h-8" />
+            <span class="text-[20px] tracking-tight text-slate-700 font-normal hidden sm:inline">Calendar</span>
+        </div>
+    </div>
+    <div class="flex items-center gap-3 flex-1">
+        <div class="flex gap-1 items-center">
+            <button id="todayBtn" class="px-2 py-1 text-sm rounded border border-slate-200 hover:bg-slate-50">Today</button>
+            <div class="flex items-center gap-1">
+                <div id="prevBtn" class="btn-icon"><svg viewBox="0 0 24 24" class="w-5 h-5 text-slate-600"><path fill="currentColor" d="m15 18-6-6 6-6z"/></svg></div>
+                <div id="nextBtn" class="btn-icon"><svg viewBox="0 0 24 24" class="w-5 h-5 text-slate-600"><path fill="currentColor" d="m9 6 6 6-6 6z"/></svg></div>
+            </div>
+            <div class="text-lg font-medium tracking-tight flex items-center gap-2" id="currentRangeLabel"></div>
+        </div>
+        <div class="flex items-center gap-1 bg-slate-100 rounded-md px-1 py-1">
+            <button data-view="month" class="px-3 py-1 rounded text-sm hover:bg-white/80 view-btn" id="monthViewBtn">Month</button>
+            <button data-view="week" class="px-3 py-1 rounded text-sm hover:bg-white/80 view-btn" id="weekViewBtn">Week</button>
+            <button data-view="day" class="px-3 py-1 rounded text-sm hover:bg-white/80 view-btn" id="dayViewBtn">Day</button>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+            <div class="relative hidden md:block">
+                <input type="text" placeholder="Search" class="pl-9 pr-3 py-1.5 rounded-md bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" />
+                <svg viewBox="0 0 24 24" class="w-4 h-4 text-slate-500 absolute left-3 top-2.5"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l4.99 5L21 19.49zm-6 0C8.01 14 6 11.99 6 9.5S8.01 5 10.5 5 15 7.01 15 9.5 12.99 14 10.5 14z"/></svg>
+            </div>
+            <div class="btn-icon">
+                <svg viewBox="0 0 24 24" class="w-5 h-5 text-slate-600"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>
+            </div>
+            <img src="https://i.pravatar.cc/36?img=12" class="w-8 h-8 rounded-full" alt="avatar"/>
+        </div>
+    </div>
+</header>
+
+<main class="flex h-[calc(100vh-56px)]">
+    <!-- Sidebar -->
+    <aside id="leftSidebar" class="w-[256px] border-r border-slate-200/80 overflow-y-auto scroll-thin transition-all duration-200 bg-white hidden md:block">
+        <div class="px-4 py-3">
+            <button id="openEventModal" class="flex gap-3 items-center w-full bg-[#1a73e8] hover:bg-[#1a73e8]/90 text-white rounded-full px-4 py-2 text-sm font-medium shadow-sm">
+                <div class="bg-white/20 rounded-full w-6 h-6 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" class="w-4 h-4"><path fill="currentColor" d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
+                </div>
+                Create
+            </button>
+        </div>
+        <div class="px-4">
+            <p class="text-xs font-semibold text-slate-500 mb-1">My calendars</p>
+            <div class="space-y-1">
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked class="rounded border-slate-300 text-blue-500 focus:ring-blue-400" data-cal-source="primary" />
+                    <span class="w-2 h-2 rounded-full bg-[#1a73e8]"></span>
+                    <span>Personal</span>
+                </label>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked class="rounded border-slate-300 text-green-500 focus:ring-green-400" data-cal-source="work" />
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Work</span>
+                </label>
+                <label class="flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" checked class="rounded border-slate-300 text-purple-500 focus:ring-purple-400" data-cal-source="projects" />
+                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <span>Projects</span>
+                </label>
+            </div>
+        </div>
+        <div class="mt-6 px-3">
+            <div id="miniCalendar" class="rounded-lg border border-slate-200/70 overflow-hidden"></div>
+        </div>
+    </aside>
+
+    <!-- Content -->
+    <section class="flex-1 overflow-hidden bg-white relative">
+        <!-- Month View -->
+        <div id="monthView" class="w-full h-full overflow-y-auto scroll-thin">
+            <div class="grid grid-cols-7 border-b border-slate-200/80 bg-white sticky top-0 z-20">
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Sunday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Monday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Tuesday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Wednesday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Thursday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Friday</div>
+                <div class="py-2 text-xs font-medium text-center text-slate-500">Saturday</div>
+            </div>
+            <div id="monthGrid" class="calendar-grid bg-white"></div>
+        </div>
+
+        <!-- Week View -->
+        <div id="weekView" class="hidden w-full h-full bg-white">
+            <div class="grid grid-cols-[50px_repeat(7,1fr)] border-b border-slate-200/80 sticky top-0 bg-white z-20">
+                <div class="py-2"></div>
+                <div id="weekHeader" class="col-span-7 grid grid-cols-7"></div>
+            </div>
+            <div id="weekGrid" class="week-grid scroll-thin"></div>
+        </div>
+
+        <!-- Day View -->
+        <div id="dayView" class="hidden w-full h-full bg-white">
+            <div class="grid grid-cols-[50px_1fr] border-b border-slate-200/80 sticky top-0 bg-white z-20">
+                <div class="py-2"></div>
+                <div class="py-2 px-3 flex gap-3 items-center" id="dayHeader"></div>
+            </div>
+            <div id="dayGrid" class="day-grid active scroll-thin"></div>
+        </div>
+    </section>
+</main>
+
+<!-- Floating button -->
+<div class="floating-new md:hidden" id="openEventModalMobile">
+    <svg viewBox="0 0 24 24" class="w-6 h-6"><path fill="currentColor" d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
+</div>
+
+<!-- Event Modal -->
+<div id="eventModalBackdrop" class="modal-backdrop">
+    <div class="modal">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <h2 class="text-base font-semibold" id="eventModalTitle">Create event</h2>
+            <div class="flex gap-2 items-center">
+                <button id="deleteEventBtn" class="text-xs text-red-500 hover:bg-red-50 px-2 py-1 rounded hidden">Delete</button>
+                <button id="closeModalBtn" class="btn-icon">
+                    <svg viewBox="0 0 24 24" class="w-5 h-5 text-slate-600"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="p-4 space-y-3">
+            <div>
+                <input id="eventTitleInput" type="text" placeholder="Add title" class="w-full border-0 focus:ring-0 text-lg font-medium px-0" />
+            </div>
+            <div class="flex gap-2 items-center">
+                <input id="eventDateInput" type="date" class="border-slate-200 rounded-md text-sm" />
+                <input id="eventTimeInput" type="time" class="border-slate-200 rounded-md text-sm" />
+                <label class="flex items-center gap-2 text-xs text-slate-600">
+                    <input type="checkbox" id="allDayCheck" class="rounded border-slate-300" /> All day
+                </label>
+            </div>
+            <div>
+                <label class="text-xs text-slate-500 block mb-1">Calendar</label>
+                <select id="eventCalendarInput" class="w-full rounded-md border-slate-200 text-sm">
+                    <option value="primary">Personal</option>
+                    <option value="work">Work</option>
+                    <option value="projects">Projects</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs text-slate-500 block mb-1">Description</label>
+                <textarea id="eventDescInput" class="w-full rounded-md border-slate-200 text-sm min-h-[76px]"></textarea>
+            </div>
+        </div>
+        <div class="px-4 py-3 flex justify-end gap-2 border-t border-slate-100">
+            <button id="cancelEventBtn" class="px-3 py-1.5 text-sm rounded-md hover:bg-slate-50">Cancel</button>
+            <button id="saveEventBtn" class="px-3 py-1.5 text-sm rounded-md bg-[#1a73e8] text-white hover:bg-[#1662c5]">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const monthView = document.getElementById('monthView');
+    const weekView = document.getElementById('weekView');
+    const dayView = document.getElementById('dayView');
+    const monthGrid = document.getElementById('monthGrid');
+    const weekGrid = document.getElementById('weekGrid');
+    const dayGrid = document.getElementById('dayGrid');
+    const currentRangeLabel = document.getElementById('currentRangeLabel');
+    const weekHeader = document.getElementById('weekHeader');
+    const dayHeader = document.getElementById('dayHeader');
+    const todayBtn = document.getElementById('todayBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    const eventModal = document.getElementById('eventModalBackdrop');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const cancelEventBtn = document.getElementById('cancelEventBtn');
+    const openEventModalBtn = document.getElementById('openEventModal');
+    const openEventModalMobile = document.getElementById('openEventModalMobile');
+    const saveEventBtn = document.getElementById('saveEventBtn');
+    const deleteEventBtn = document.getElementById('deleteEventBtn');
+    const eventModalTitle = document.getElementById('eventModalTitle');
+
+    const eventTitleInput = document.getElementById('eventTitleInput');
+    const eventDateInput = document.getElementById('eventDateInput');
+    const eventTimeInput = document.getElementById('eventTimeInput');
+    const allDayCheck = document.getElementById('allDayCheck');
+    const eventCalendarInput = document.getElementById('eventCalendarInput');
+    const eventDescInput = document.getElementById('eventDescInput');
+
+    const VIEW_MONTH = 'month';
+    const VIEW_WEEK = 'week';
+    const VIEW_DAY = 'day';
+
+    let currentView = VIEW_MONTH;
+    let currentDate = new Date();
+    let editingEventId = null;
+    let events = JSON.parse(localStorage.getItem('calEvents') || '[]');
+
+    function formatDateISO(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`; // Local date, not UTC
+    }
+
+
+    function openEventModal(date = new Date(), eventData = null) {
+        eventModal.style.display = 'flex';
+        setTimeout(() => {
+            eventModal.querySelector('.modal').style.transform = 'translateY(0)';
+        }, 0);
+        eventDateInput.value = formatDateISO(date);
+        eventTimeInput.value = "10:00";
+        eventTitleInput.value = '';
+        eventDescInput.value = '';
+        allDayCheck.checked = false;
+        deleteEventBtn.classList.add('hidden');
+        editingEventId = null;
+        if (eventData) {
+            eventTitleInput.value = eventData.title;
+            eventDateInput.value = eventData.date;
+            eventTimeInput.value = eventData.time || '10:00';
+            eventDescInput.value = eventData.desc || '';
+            eventCalendarInput.value = eventData.cal || 'primary';
+            allDayCheck.checked = eventData.allDay || false;
+            editingEventId = eventData.id;
+            deleteEventBtn.classList.remove('hidden');
+            eventModalTitle.textContent = 'Edit event';
+        } else {
+            eventModalTitle.textContent = 'Create event';
+        }
+    }
+    function closeEventModal() {
+        eventModal.style.display = 'none';
+    }
+
+    function saveEventsToStorage() {
+        localStorage.setItem('calEvents', JSON.stringify(events));
+    }
+
+    function createEventObject() {
+        const title = eventTitleInput.value.trim() || 'Untitled event';
+        const date = eventDateInput.value;
+        const time = allDayCheck.checked ? '' : eventTimeInput.value;
+        const cal = eventCalendarInput.value;
+        const desc = eventDescInput.value.trim();
+        const allDay = allDayCheck.checked;
+        return { id: editingEventId || 'evt-' + Date.now(), title, date, time, cal, desc, allDay };
+    }
+
+    function upsertEvent() {
+        const evt = createEventObject();
+        const idx = events.findIndex(e => e.id === evt.id);
+        if (idx >= 0) events[idx] = evt;
+        else events.push(evt);
+        saveEventsToStorage();
+        renderAll();
+        closeEventModal();
+    }
+
+    function deleteEvent() {
+        if (!editingEventId) return;
+        events = events.filter(e => e.id !== editingEventId);
+        saveEventsToStorage();
+        renderAll();
+        closeEventModal();
+    }
+
+    saveEventBtn.addEventListener('click', upsertEvent);
+    deleteEventBtn.addEventListener('click', deleteEvent);
+    closeModalBtn.addEventListener('click', closeEventModal);
+    cancelEventBtn.addEventListener('click', closeEventModal);
+    openEventModalBtn && openEventModalBtn.addEventListener('click', () => openEventModal(new Date()));
+    openEventModalMobile && openEventModalMobile.addEventListener('click', () => openEventModal(new Date()));
+    eventModal.addEventListener('click', (e) => {
+        if (e.target === eventModal) closeEventModal();
+    });
+
+    function getStartOfWeek(date) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day;
+        return new Date(d.setDate(diff));
+    }
+    function getEndOfWeek(date) {
+        const start = getStartOfWeek(date);
+        return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+    }
+
+    function renderMonthView() {
+        monthGrid.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const numDays = lastDay.getDate();
+        const startDay = firstDay.getDay();
+        const today = new Date();
+        const prevMonthLastDay = new Date(year, month, 0).getDate();
+        const totalCells = 42;
+        for (let i = 0; i < totalCells; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'calendar-cell hover:bg-slate-50 transition-colors';
+            let dateNum = i - startDay + 1;
+            let cellDate;
+            if (i < startDay) {
+                cell.classList.add('bg-slate-50/30');
+                dateNum = prevMonthLastDay - (startDay - i) + 1;
+                cellDate = new Date(year, month - 1, dateNum);
+            } else if (i >= startDay + numDays) {
+                cell.classList.add('bg-slate-50/30');
+                dateNum = i - (startDay + numDays) + 1;
+                cellDate = new Date(year, month + 1, dateNum);
+            } else {
+                cellDate = new Date(year, month, dateNum);
+            }
+            const isToday = cellDate.toDateString() === today.toDateString();
+            const dayHeader = document.createElement('div');
+            dayHeader.className = 'flex items-center gap-1 pt-1 px-2';
+            if (isToday) {
+                const dot = document.createElement('div');
+                dot.className = 'today-outline';
+                dot.textContent = cellDate.getDate();
+                dayHeader.appendChild(dot);
+                cell.classList.add('today-cell');
+            } else {
+                const span = document.createElement('div');
+                span.className = 'text-xs text-slate-500';
+                span.textContent = cellDate.getDate();
+                dayHeader.appendChild(span);
+            }
+            cell.appendChild(dayHeader);
+            const evtWrap = document.createElement('div');
+            evtWrap.className = 'px-2 pt-1 space-y-1';
+            const dayEvents = events.filter(e => e.date === formatDateISO(cellDate));
+            dayEvents.slice(0,3).forEach(evt => {
+                const pill = document.createElement('div');
+                pill.className = 'event-pill flex gap-1 items-center';
+                const color = evt.cal === 'primary' ? '#1a73e8' : evt.cal === 'work' ? '#10b981' : '#8b5cf6';
+                pill.style.borderLeftColor = color;
+                pill.textContent = evt.title + (evt.allDay ? '' : ' · ' + evt.time);
+                pill.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEventModal(cellDate, evt);
+                });
+                evtWrap.appendChild(pill);
+            });
+            if (dayEvents.length > 3) {
+                const more = document.createElement('div');
+                more.className = 'text-[11px] text-slate-500 cursor-pointer';
+                more.textContent = '+' + (dayEvents.length - 3) + ' more';
+                evtWrap.appendChild(more);
+            }
+            cell.appendChild(evtWrap);
+            cell.addEventListener('click', () => openEventModal(cellDate));
+            monthGrid.appendChild(cell);
+        }
+        currentRangeLabel.textContent = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    }
+
+    function renderWeekView() {
+        const start = getStartOfWeek(currentDate);
+        const end = getEndOfWeek(currentDate);
+        weekHeader.innerHTML = '';
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+            const col = document.createElement('div');
+            col.className = 'py-2 text-xs text-center';
+            const isToday = d.toDateString() === new Date().toDateString();
+            col.innerHTML = '<div class="text-slate-500 text-[11px]">'+d.toLocaleString('default',{weekday:'short'})+'</div>' +
+                '<div class="mt-1 mx-auto '+(isToday ? 'today-outline' : 'text-sm text-slate-700')+'">'+(isToday ? d.getDate() : d.getDate())+'</div>';
+            weekHeader.appendChild(col);
+        }
+
+        weekGrid.innerHTML = '';
+        const timeCol = document.createElement('div');
+        timeCol.className = 'time-col sticky left-0';
+        for (let h=0; h<24; h++) {
+            const row = document.createElement('div');
+            row.className = 'hour-row';
+            const label = document.createElement('div');
+            label.className = 'hour-label';
+            label.textContent = h === 0 ? '' : (h > 12 ? h - 12 : h) + (h < 12 ? 'am':'pm');
+            row.appendChild(label);
+            timeCol.appendChild(row);
+        }
+        weekGrid.appendChild(timeCol);
+
+        for (let i=0; i<7; i++) {
+            const col = document.createElement('div');
+            col.className = 'relative border-r border-slate-200/40';
+            col.style.minHeight = 'calc(24*48px)';
+            const colDate = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+
+            for (let h=0; h<24; h++) {
+                const slot = document.createElement('div');
+                slot.className = 'hour-row hover:bg-slate-50/20';
+                const slotTime = String(h).padStart(2,'0') + ':00';
+                slot.addEventListener('dblclick', () => {
+                    openEventModal(colDate);
+                    eventTimeInput.value = slotTime;
+                });
+                col.appendChild(slot);
+            }
+
+            const dayEvents = events.filter(e => e.date === formatDateISO(colDate));
+            dayEvents.forEach(evt => {
+                const ev = document.createElement('div');
+                const color = evt.cal === 'primary' ? '#1a73e8' : evt.cal === 'work' ? '#10b981' : '#8b5cf6';
+                ev.className = 'absolute left-1 right-1 rounded-md text-xs text-white p-1.5 shadow-sm cursor-pointer';
+                ev.style.background = color;
+                let top = 0, height = 48;
+                if (evt.allDay || !evt.time) {
+                    top = 4;
+                    height = 26;
+                } else {
+                    const [hh, mm] = evt.time.split(':').map(Number);
+                    top = hh * 48 + (mm/60)*48 + 4;
+                    height = 44;
+                }
+                ev.style.top = top + 'px';
+                ev.style.height = height + 'px';
+                ev.textContent = evt.title + (evt.allDay ? ' (all day)' : '');
+                ev.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openEventModal(colDate, evt);
+                });
+                col.appendChild(ev);
+            });
+
+            col.addEventListener('click', (e) => {
+                if (e.target === col) openEventModal(colDate);
+            });
+
+            if (colDate.toDateString() === new Date().toDateString()) {
+                const now = new Date();
+                const top = now.getHours()*48 + (now.getMinutes()/60)*48 + 4;
+                const line = document.createElement('div');
+                line.className = 'time-highlight';
+                line.style.top = top + 'px';
+                col.appendChild(line);
+            }
+
+            weekGrid.appendChild(col);
+        }
+        currentRangeLabel.textContent = start.toLocaleDateString(undefined, { month:'short', day:'numeric'}) + ' - ' + end.toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric'});
+    }
+
+    function renderDayView() {
+        dayGrid.innerHTML = '';
+        dayHeader.innerHTML = '';
+        const d = new Date(currentDate);
+        const isToday = d.toDateString() === new Date().toDateString();
+        const hTitle = document.createElement('div');
+        hTitle.innerHTML = '<div class="text-slate-500 text-xs">'+d.toLocaleString('default',{weekday:'long'})+'</div>' +
+            '<div class="flex items-center gap-2"><div class="'+(isToday?'today-outline':'text-3xl font-semibold text-slate-700')+'">'+d.getDate()+'</div><div class="text-slate-500 text-sm">'+d.toLocaleString('default',{month:'long', year:'numeric'})+'</div></div>';
+        dayHeader.appendChild(hTitle);
+
+        const timeCol = document.createElement('div');
+        timeCol.className = 'time-col sticky left-0';
+        for (let h=0; h<24; h++) {
+            const row = document.createElement('div');
+            row.className = 'hour-row';
+            const label = document.createElement('div');
+            label.className = 'hour-label';
+            label.textContent = h === 0 ? '' : (h>12? h-12:h) + (h<12?'am':'pm');
+            row.appendChild(label);
+            timeCol.appendChild(row);
+        }
+        dayGrid.appendChild(timeCol);
+
+        const col = document.createElement('div');
+        col.className = 'relative';
+        col.style.minHeight = 'calc(24*48px)';
+        for (let h=0; h<24; h++) {
+            const slot = document.createElement('div');
+            slot.className = 'hour-row hover:bg-slate-50/30';
+            const slotTime = String(h).padStart(2,'0') + ':00';
+            slot.addEventListener('dblclick', () => {
+                openEventModal(d);
+                eventTimeInput.value = slotTime;
+            });
+            col.appendChild(slot);
+        }
+
+        const dayEvents = events.filter(e => e.date === formatDateISO(d));
+        dayEvents.forEach(evt => {
+            const el = document.createElement('div');
+            const color = evt.cal === 'primary' ? '#1a73e8' : evt.cal === 'work' ? '#10b981' : '#8b5cf6';
+            el.className = 'absolute left-1 right-3 rounded-md text-xs text-white p-1.5 shadow-sm cursor-pointer';
+            el.style.background = color;
+            let top = 4, height = 60;
+            if (evt.allDay || !evt.time) {
+                top = 4;
+                height = 26;
+            } else {
+                const [hh, mm] = evt.time.split(':').map(Number);
+                top = hh * 48 + (mm/60)*48 + 4;
+                height = 44;
+            }
+            el.style.top = top + 'px';
+            el.style.height = height + 'px';
+            el.textContent = evt.title + (evt.allDay ? ' (all day)' : '');
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openEventModal(d, evt);
+            });
+            col.appendChild(el);
+        });
+
+        if (isToday) {
+            const now = new Date();
+            const line = document.createElement('div');
+            line.className = 'time-highlight';
+            const top = now.getHours()*48 + (now.getMinutes()/60)*48 + 4;
+            line.style.top = top + 'px';
+            col.appendChild(line);
+        }
+
+        dayGrid.appendChild(col);
+        currentRangeLabel.textContent = d.toLocaleString('default', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    }
+
+    function renderMiniCalendar() {
+        const mc = document.getElementById('miniCalendar');
+        if (!mc) return;
+        mc.innerHTML = '';
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDay = firstDay.getDay();
+        const totalCells = 42;
+        const header = document.createElement('div');
+        header.className = 'flex items-center justify-between px-3 py-2 bg-white';
+        header.innerHTML = '<div class="text-sm font-medium">'+currentDate.toLocaleString('default',{month:'long',year:'numeric'})+'</div>';
+        const left = document.createElement('div');
+        left.className = 'flex gap-1';
+        const prev = document.createElement('div');
+        prev.className = 'btn-icon';
+        prev.innerHTML = '<svg viewBox="0 0 24 24" class="w-4 h-4 text-slate-600"><path fill="currentColor" d="m15 18-6-6 6-6z"/></svg>';
+        prev.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderAll();
+        });
+        const next = document.createElement('div');
+        next.className = 'btn-icon';
+        next.innerHTML = '<svg viewBox="0 0 24 24" class="w-4 h-4 text-slate-600"><path fill="currentColor" d="m9 6 6 6-6 6z"/></svg>';
+        next.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderAll();
+        });
+        left.appendChild(prev);
+        left.appendChild(next);
+        header.appendChild(left);
+        mc.appendChild(header);
+
+        const daysRow = document.createElement('div');
+        daysRow.className = 'grid grid-cols-7 text-center text-[10px] text-slate-400';
+        ['S','M','T','W','T','F','S'].forEach(d => {
+            const dd = document.createElement('div');
+            dd.textContent = d;
+            dd.className = 'py-1';
+            daysRow.appendChild(dd);
+        });
+        mc.appendChild(daysRow);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-7 text-center text-xs bg-white';
+        const today = new Date();
+        for (let i = 0; i < totalCells; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'py-2 cursor-pointer hover:bg-slate-50';
+            const dateNum = i - startDay + 1;
+            if (i < startDay || dateNum > lastDay.getDate()) {
+                cell.classList.add('text-slate-200');
+                cell.textContent = '';
+            } else {
+                const dt = new Date(year, month, dateNum);
+                cell.textContent = dateNum;
+                if (dt.toDateString() === today.toDateString()) {
+                    cell.classList.add('bg-blue-50','text-blue-600','font-semibold','rounded-md');
+                }
+                cell.addEventListener('click', () => {
+                    currentDate = dt;
+                    currentView = VIEW_DAY;
+                    updateViewButtons();
+                    showView();
+                    renderAll();
+                });
+            }
+            grid.appendChild(cell);
+        }
+        mc.appendChild(grid);
+    }
+
+    function renderAll() {
+        if (currentView === VIEW_MONTH) renderMonthView();
+        else if (currentView === VIEW_WEEK) renderWeekView();
+        else renderDayView();
+        renderMiniCalendar();
+    }
+
+    function showView() {
+        monthView.classList.add('hidden');
+        weekView.classList.add('hidden');
+        dayView.classList.add('hidden');
+        if (currentView === VIEW_MONTH) monthView.classList.remove('hidden');
+        else if (currentView === VIEW_WEEK) weekView.classList.remove('hidden');
+        else dayView.classList.remove('hidden');
+    }
+
+    function updateViewButtons() {
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            if (btn.dataset.view === currentView) btn.classList.add('view-active');
+            else btn.classList.remove('view-active');
+        });
+    }
+
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentView = btn.dataset.view;
+            showView();
+            updateViewButtons();
+            renderAll();
+        });
+    });
+
+    todayBtn.addEventListener('click', () => {
+        currentDate = new Date();
+        renderAll();
+    });
+    prevBtn.addEventListener('click', () => {
+        if (currentView === VIEW_MONTH) currentDate.setMonth(currentDate.getMonth() - 1);
+        else if (currentView === VIEW_WEEK) currentDate.setDate(currentDate.getDate() - 7);
+        else currentDate.setDate(currentDate.getDate() - 1);
+        renderAll();
+    });
+    nextBtn.addEventListener('click', () => {
+        if (currentView === VIEW_MONTH) currentDate.setMonth(currentDate.getMonth() + 1);
+        else if (currentView === VIEW_WEEK) currentDate.setDate(currentDate.getDate() + 7);
+        else currentDate.setDate(currentDate.getDate() + 1);
+        renderAll();
+    });
+
+    document.getElementById('menuToggle').addEventListener('click', () => {
+        const sidebar = document.getElementById('leftSidebar');
+        sidebar.classList.toggle('hidden');
+    });
+
+    showView();
+    updateViewButtons();
+    renderAll();
+</script>
+</body>
+</html>
